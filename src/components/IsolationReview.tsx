@@ -33,13 +33,13 @@ const getFileIcon = (name: string) => {
 const getSecurityIcon = (level: SecurityLevel) => {
   switch (level) {
     case 'normal':
-      return <ShieldCheck className="w-4 h-4 text-security-normal" />
+      return <ShieldCheck className="w-4 h-4 text-emerald-500" />
     case 'internal':
-      return <Shield className="w-4 h-4 text-security-internal" />
+      return <Shield className="w-4 h-4 text-blue-500" />
     case 'core':
-      return <ShieldAlert className="w-4 h-4 text-security-core" />
+      return <ShieldAlert className="w-4 h-4 text-amber-500" />
     case 'forbidden':
-      return <ShieldX className="w-4 h-4 text-security-forbidden" />
+      return <ShieldX className="w-4 h-4 text-red-500" />
   }
 }
 
@@ -136,7 +136,7 @@ const IsolationReview = () => {
     let allowed = 0
     let needsPartner = 0
     let forbidden = 0
-    reviewResults.forEach((result) => {
+    Object.values(reviewResults).forEach((result) => {
       if (result.status === 'allowed') allowed++
       else if (result.status === 'needs_partner') needsPartner++
       else if (result.status === 'forbidden') forbidden++
@@ -321,7 +321,7 @@ const IsolationReview = () => {
               ) : (
                 <div className="max-h-[500px] overflow-y-auto">
                   {selectedFiles.map((file) => {
-                    const result = reviewResults.get(file.id)
+                    const result = reviewResults[file.id]
                     const resultLabel = result
                       ? getResultLabel(result.status)
                       : getResultLabel('pending')

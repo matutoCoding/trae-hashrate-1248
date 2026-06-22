@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import type { CaseFile, AccessLogEntry, SecurityLevel, AccessAction } from '../types'
 
 interface AppState {
@@ -7,7 +8,7 @@ interface AppState {
   accessLogs: AccessLogEntry[]
   currentUser: { name: string; role: '合伙人' | '律师助理' | '档案管理员' }
   selectedFileIds: string[]
-  reviewResults: Map<string, { status: string; reason: string }>
+  reviewResults: Record<string, { status: string; reason: string }>
   filterCaseNumber: string
   filterClientName: string
 
@@ -28,7 +29,7 @@ interface AppState {
 
 const generateId = () => Math.random().toString(36).substring(2, 11)
 
-const mockFiles: CaseFile[] = [
+const initialFiles: CaseFile[] = [
   {
     id: generateId(),
     name: '股权转让协议_最终版.pdf',
@@ -107,13 +108,13 @@ const mockFiles: CaseFile[] = [
   },
 ]
 
-const mockLogs: AccessLogEntry[] = [
+const initialLogs: AccessLogEntry[] = [
   {
     id: generateId(),
-    fileId: mockFiles[0].id,
-    fileName: mockFiles[0].name,
-    caseNumber: mockFiles[0].caseNumber,
-    clientName: mockFiles[0].clientName,
+    fileId: initialFiles[0].id,
+    fileName: initialFiles[0].name,
+    caseNumber: initialFiles[0].caseNumber,
+    clientName: initialFiles[0].clientName,
     action: 'view',
     operator: '张律师',
     operatorRole: '合伙人',
@@ -122,10 +123,10 @@ const mockLogs: AccessLogEntry[] = [
   },
   {
     id: generateId(),
-    fileId: mockFiles[1].id,
-    fileName: mockFiles[1].name,
-    caseNumber: mockFiles[1].caseNumber,
-    clientName: mockFiles[1].clientName,
+    fileId: initialFiles[1].id,
+    fileName: initialFiles[1].name,
+    caseNumber: initialFiles[1].caseNumber,
+    clientName: initialFiles[1].clientName,
     action: 'download',
     operator: '王助理',
     operatorRole: '律师助理',
@@ -134,10 +135,10 @@ const mockLogs: AccessLogEntry[] = [
   },
   {
     id: generateId(),
-    fileId: mockFiles[1].id,
-    fileName: mockFiles[1].name,
-    caseNumber: mockFiles[1].caseNumber,
-    clientName: mockFiles[1].clientName,
+    fileId: initialFiles[1].id,
+    fileName: initialFiles[1].name,
+    caseNumber: initialFiles[1].caseNumber,
+    clientName: initialFiles[1].clientName,
     action: 'unlock_request',
     operator: '王助理',
     operatorRole: '律师助理',
@@ -146,10 +147,10 @@ const mockLogs: AccessLogEntry[] = [
   },
   {
     id: generateId(),
-    fileId: mockFiles[2].id,
-    fileName: mockFiles[2].name,
-    caseNumber: mockFiles[2].caseNumber,
-    clientName: mockFiles[2].clientName,
+    fileId: initialFiles[2].id,
+    fileName: initialFiles[2].name,
+    caseNumber: initialFiles[2].caseNumber,
+    clientName: initialFiles[2].clientName,
     action: 'view',
     operator: '李档案员',
     operatorRole: '档案管理员',
@@ -158,10 +159,10 @@ const mockLogs: AccessLogEntry[] = [
   },
   {
     id: generateId(),
-    fileId: mockFiles[4].id,
-    fileName: mockFiles[4].name,
-    caseNumber: mockFiles[4].caseNumber,
-    clientName: mockFiles[4].clientName,
+    fileId: initialFiles[4].id,
+    fileName: initialFiles[4].name,
+    caseNumber: initialFiles[4].caseNumber,
+    clientName: initialFiles[4].clientName,
     action: 'unlock_approve',
     operator: '陈合伙人',
     operatorRole: '合伙人',
@@ -170,144 +171,168 @@ const mockLogs: AccessLogEntry[] = [
   },
 ]
 
-export const useAppStore = create<AppState>((set, get) => ({
-  currentView: 'home',
-  files: mockFiles,
-  accessLogs: mockLogs,
-  currentUser: { name: '王助理', role: '律师助理' },
-  selectedFileIds: [],
-  reviewResults: new Map(),
-  filterCaseNumber: '',
-  filterClientName: '',
+const STORE_VERSION = 1
 
-  setCurrentView: (view) => set({ currentView: view }),
+export const useAppStore = create<AppState>()(
+  persist(
+    (set, get) => ({
+      currentView: 'home',
+      files: initialFiles,
+      accessLogs: initialLogs,
+      currentUser: { name: '王助理', role: '律师助理' },
+      selectedFileIds: [],
+      reviewResults: {},
+      filterCaseNumber: '',
+      filterClientName: '',
 
-  addFile: (fileData) => {
-    const newFile: CaseFile = {
-      ...fileData,
-      id: generateId(),
-      uploadTime: new Date().toLocaleString('zh-CN'),
-      isInHighSecurityZone: fileData.securityLevel === 'core' || fileData.securityLevel === 'forbidden',
-    }
-    set((state) => ({ files: [newFile, ...state.files] }))
-    get().addAccessLog({
-      fileId: newFile.id,
-      fileName: newFile.name,
-      caseNumber: newFile.caseNumber,
-      clientName: newFile.clientName,
-      action: 'view',
-      operator: get().currentUser.name,
-      operatorRole: get().currentUser.role,
-      remark: '上传文件',
-    })
-  },
+      setCurrentView: (view) => set({ currentView: view }),
 
-  updateFileSecurity: (fileId, level) => {
-    set((state) => ({
-      files: state.files.map((f) =>
-        f.id === fileId
-          ? {
-              ...f,
-              securityLevel: level,
-              isInHighSecurityZone: level === 'core' || level === 'forbidden',
-            }
-          : f
-      ),
-    }))
-  },
+      addFile: (fileData) => {
+        const newFile: CaseFile = {
+          ...fileData,
+          id: generateId(),
+          uploadTime: new Date().toLocaleString('zh-CN'),
+          isInHighSecurityZone: fileData.securityLevel === 'core' || fileData.securityLevel === 'forbidden',
+        }
+        set((state) => ({ files: [newFile, ...state.files] }))
+        get().addAccessLog({
+          fileId: newFile.id,
+          fileName: newFile.name,
+          caseNumber: newFile.caseNumber,
+          clientName: newFile.clientName,
+          action: 'view',
+          operator: get().currentUser.name,
+          operatorRole: get().currentUser.role,
+          remark: '上传文件',
+        })
+      },
 
-  deleteFile: (fileId) => {
-    set((state) => ({
-      files: state.files.filter((f) => f.id !== fileId),
-      selectedFileIds: state.selectedFileIds.filter((id) => id !== fileId),
-    }))
-  },
+      updateFileSecurity: (fileId, level) => {
+        set((state) => ({
+          files: state.files.map((f) =>
+            f.id === fileId
+              ? {
+                  ...f,
+                  securityLevel: level,
+                  isInHighSecurityZone: level === 'core' || level === 'forbidden',
+                }
+              : f
+          ),
+        }))
+      },
 
-  toggleFileSelection: (fileId) => {
-    set((state) => ({
-      selectedFileIds: state.selectedFileIds.includes(fileId)
-        ? state.selectedFileIds.filter((id) => id !== fileId)
-        : [...state.selectedFileIds, fileId],
-    }))
-  },
+      deleteFile: (fileId) => {
+        set((state) => ({
+          files: state.files.filter((f) => f.id !== fileId),
+          selectedFileIds: state.selectedFileIds.filter((id) => id !== fileId),
+        }))
+      },
 
-  clearSelection: () => set({ selectedFileIds: [], reviewResults: new Map() }),
+      toggleFileSelection: (fileId) => {
+        set((state) => ({
+          selectedFileIds: state.selectedFileIds.includes(fileId)
+            ? state.selectedFileIds.filter((id) => id !== fileId)
+            : [...state.selectedFileIds, fileId],
+        }))
+      },
 
-  addAccessLog: (entry) => {
-    const newEntry: AccessLogEntry = {
-      ...entry,
-      id: generateId(),
-      timestamp: new Date().toLocaleString('zh-CN'),
-    }
-    set((state) => ({ accessLogs: [newEntry, ...state.accessLogs] }))
-  },
+      clearSelection: () => set({ selectedFileIds: [], reviewResults: {} }),
 
-  setFilterCaseNumber: (value) => set({ filterCaseNumber: value }),
-  setFilterClientName: (value) => set({ filterClientName: value }),
+      addAccessLog: (entry) => {
+        const newEntry: AccessLogEntry = {
+          ...entry,
+          id: generateId(),
+          timestamp: new Date().toLocaleString('zh-CN'),
+        }
+        set((state) => ({ accessLogs: [newEntry, ...state.accessLogs] }))
+      },
 
-  getFilteredFiles: () => {
-    const { files, filterCaseNumber, filterClientName } = get()
-    return files.filter((f) => {
-      const matchCase = !filterCaseNumber || f.caseNumber.includes(filterCaseNumber)
-      const matchClient = !filterClientName || f.clientName.includes(filterClientName)
-      return matchCase && matchClient
-    })
-  },
+      setFilterCaseNumber: (value) => set({ filterCaseNumber: value }),
+      setFilterClientName: (value) => set({ filterClientName: value }),
 
-  getHighSecurityFiles: () => {
-    return get().getFilteredFiles().filter((f) => f.isInHighSecurityZone)
-  },
+      getFilteredFiles: () => {
+        const { files, filterCaseNumber, filterClientName } = get()
+        return files.filter((f) => {
+          const matchCase = !filterCaseNumber || f.caseNumber.includes(filterCaseNumber)
+          const matchClient = !filterClientName || f.clientName.includes(filterClientName)
+          return matchCase && matchClient
+        })
+      },
 
-  getNormalFiles: () => {
-    return get().getFilteredFiles().filter((f) => !f.isInHighSecurityZone)
-  },
+      getHighSecurityFiles: () => {
+        return get().getFilteredFiles().filter((f) => f.isInHighSecurityZone)
+      },
 
-  performReview: () => {
-    const { files, selectedFileIds } = get()
-    const results = new Map<string, { status: string; reason: string }>()
+      getNormalFiles: () => {
+        return get().getFilteredFiles().filter((f) => !f.isInHighSecurityZone)
+      },
 
-    selectedFileIds.forEach((fileId) => {
-      const file = files.find((f) => f.id === fileId)
-      if (!file) return
+      performReview: () => {
+        const { files, selectedFileIds } = get()
+        const results: Record<string, { status: string; reason: string }> = {}
 
-      let status: 'allowed' | 'needs_partner' | 'forbidden'
-      let reason: string
+        selectedFileIds.forEach((fileId) => {
+          const file = files.find((f) => f.id === fileId)
+          if (!file) return
 
-      switch (file.securityLevel) {
-        case 'normal':
-          status = 'allowed'
-          reason = '普通密级文件，可直接外发'
-          break
-        case 'internal':
-          if (file.authorizedBy) {
-            status = 'allowed'
-            reason = `内部文件，已由${file.authorizedBy}授权`
-          } else {
-            status = 'needs_partner'
-            reason = '内部文件，缺少授权人确认，需合伙人审批'
+          let status: 'allowed' | 'needs_partner' | 'forbidden'
+          let reason: string
+
+          switch (file.securityLevel) {
+            case 'normal':
+              status = 'allowed'
+              reason = '普通密级文件，可直接外发'
+              break
+            case 'internal':
+              if (file.authorizedBy) {
+                status = 'allowed'
+                reason = `内部文件，已由${file.authorizedBy}授权`
+              } else {
+                status = 'needs_partner'
+                reason = '内部文件，缺少授权人确认，需合伙人审批'
+              }
+              break
+            case 'core':
+              if (file.authorizedBy && file.authorizedAt) {
+                status = 'needs_partner'
+                reason = `核心文件，已由${file.authorizedBy}初步授权，外发需合伙人最终确认`
+              } else {
+                status = 'needs_partner'
+                reason = '核心文件，缺少授权人确认，必须经合伙人审批'
+              }
+              break
+            case 'forbidden':
+              status = 'forbidden'
+              reason = '禁止外传文件，不得外发给任何外部方'
+              break
+            default:
+              status = 'forbidden'
+              reason = '未知密级，禁止外发'
           }
-          break
-        case 'core':
-          if (file.authorizedBy && file.authorizedAt) {
-            status = 'needs_partner'
-            reason = `核心文件，已由${file.authorizedBy}初步授权，外发需合伙人最终确认`
-          } else {
-            status = 'needs_partner'
-            reason = '核心文件，缺少授权人确认，必须经合伙人审批'
-          }
-          break
-        case 'forbidden':
-          status = 'forbidden'
-          reason = '禁止外传文件，不得外发给任何外部方'
-          break
-        default:
-          status = 'forbidden'
-          reason = '未知密级，禁止外发'
-      }
 
-      results.set(fileId, { status, reason })
-    })
+          results[fileId] = { status, reason }
+        })
 
-    set({ reviewResults: results })
-  },
-}))
+        set({ reviewResults: results })
+      },
+    }),
+    {
+      name: `law-firm-secure-drive-storage-v${STORE_VERSION}`,
+      partialize: (state) => ({
+        files: state.files,
+        accessLogs: state.accessLogs,
+        currentUser: state.currentUser,
+      }),
+      merge: (persistedState, currentState) => {
+        const merged = { ...currentState, ...(persistedState as Partial<AppState>) }
+        if (!merged.files || merged.files.length === 0) {
+          merged.files = initialFiles
+        }
+        if (!merged.accessLogs || merged.accessLogs.length === 0) {
+          merged.accessLogs = initialLogs
+        }
+        return merged
+      },
+    }
+  )
+)

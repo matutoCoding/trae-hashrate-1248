@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import {
   FolderKanban,
   ArrowLeft,
@@ -18,6 +18,7 @@ import {
   X,
   Plus,
   ChevronDown,
+  FolderUp,
 } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import type { SecurityLevel, CaseFile } from '../types'
@@ -34,13 +35,13 @@ const getFileIcon = (name: string) => {
 const getSecurityIcon = (level: SecurityLevel) => {
   switch (level) {
     case 'normal':
-      return <ShieldCheck className="w-4 h-4 text-security-normal" />
+      return <ShieldCheck className="w-4 h-4 text-emerald-500" />
     case 'internal':
-      return <Shield className="w-4 h-4 text-security-internal" />
+      return <Shield className="w-4 h-4 text-blue-500" />
     case 'core':
-      return <ShieldAlert className="w-4 h-4 text-security-core" />
+      return <ShieldAlert className="w-4 h-4 text-amber-500" />
     case 'forbidden':
-      return <ShieldX className="w-4 h-4 text-security-forbidden" />
+      return <ShieldX className="w-4 h-4 text-red-500" />
   }
 }
 
@@ -63,41 +64,54 @@ const formatSize = (bytes: number) => {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
+interface ImportFileItem {
+  name: string
+  size: number
+  securityLevel: SecurityLevel
+}
+
 interface ImportModalProps {
   onClose: () => void
 }
 
 const ImportModal = ({ onClose }: ImportModalProps) => {
   const { addFile, currentUser } = useAppStore()
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [step, setStep] = useState(1)
   const [caseNumber, setCaseNumber] = useState('')
   const [clientName, setClientName] = useState('')
   const [category, setCategory] = useState<CaseFile['category']>('合同')
-  const [files, setFiles] = useState<{ name: string; size: number; securityLevel: SecurityLevel }[]>([])
-  const [selectedFiles, setSelectedFiles] = useState<string[]>([])
+  const [files, setFiles] = useState<ImportFileItem[]>([])
 
-  const mockFileOptions = [
-    { name: '股权转让协议.pdf', size: 2048000 },
-    { name: '董事会决议.docx', size: 128000 },
-    { name: '财务报表.xlsx', size: 512000 },
-    { name: '证据清单.pdf', size: 768000 },
-    { name: '庭审笔录.docx', size: 96000 },
-    { name: '授权委托书.pdf', size: 256000 },
-  ]
-
-  const handleFileSelect = (name: string) => {
-    setSelectedFiles((prev) =>
-      prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]
-    )
+  const openFileDialog = () => {
+    fileInputRef.current?.click()
   }
 
-  const handleNext = () => {
-    if (step === 1 && selectedFiles.length > 0) {
-      const fileData = mockFileOptions
-        .filter((f) => selectedFiles.includes(f.name))
-        .map((f) => ({ ...f, securityLevel: 'normal' as SecurityLevel }))
-      setFiles(fileData)
-      setStep(2)
+  const handleFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = e.target.files
+    if (!fileList || fileList.length === 0) return
+
+    const newFiles: ImportFileItem[] = []
+    for (let i = 0; i < fileList.length; i++) {
+      const f = fileList[i]
+      newFiles.push({
+        name: f.name,
+        size: f.size,
+        securityLevel: 'normal',
+      })
+    }
+    setFiles((prev) => {
+      const existingNames = new Set(prev.map((p) => p.name))
+      const combined = [...prev]
+      newFiles.forEach((nf) => {
+        if (!existingNames.has(nf.name)) {
+          combined.push(nf)
+        }
+      })
+      return combined
+    })
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
     }
   }
 
@@ -105,6 +119,16 @@ const ImportModal = ({ onClose }: ImportModalProps) => {
     setFiles((prev) =>
       prev.map((f, i) => (i === index ? { ...f, securityLevel: level } : f))
     )
+  }
+
+  const handleRemoveFile = (index: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const handleNext = () => {
+    if (files.length > 0 && caseNumber && clientName) {
+      setStep(2)
+    }
   }
 
   const handleSubmit = () => {
@@ -124,8 +148,8 @@ const ImportModal = ({ onClose }: ImportModalProps) => {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
           <h3 className="text-lg font-semibold text-slate-800">
             {step === 1 ? '导入案件材料' : '设置密级'}
           </h3>
@@ -134,13 +158,13 @@ const ImportModal = ({ onClose }: ImportModalProps) => {
           </button>
         </div>
 
-        <div className="p-6">
+        <div className="p-6 overflow-y-auto flex-1">
           {step === 1 ? (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">
-                    案号
+                    案号 <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -152,7 +176,7 @@ const ImportModal = ({ onClose }: ImportModalProps) => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">
-                    客户名称
+                    客户名称 <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -165,10 +189,10 @@ const ImportModal = ({ onClose }: ImportModalProps) => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
                   文件类型
                 </label>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   {(['合同', '证据', '庭审笔录', '其他'] as const).map((c) => (
                     <button
                       key={c}
@@ -187,63 +211,107 @@ const ImportModal = ({ onClose }: ImportModalProps) => {
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  选择文件（模拟）
+                  选择文件 <span className="text-red-500">*</span>
                 </label>
-                <div className="border-2 border-dashed border-slate-300 rounded-xl p-4 bg-slate-50">
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {mockFileOptions.map((f) => (
-                      <label
-                        key={f.name}
-                        className="flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-200 cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition-colors"
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.jpg,.jpeg,.png,.gif"
+                  onChange={handleFilesSelected}
+                  className="hidden"
+                />
+                <button
+                  onClick={openFileDialog}
+                  className="w-full border-2 border-dashed border-blue-300 rounded-xl p-6 bg-blue-50/50 hover:bg-blue-50 hover:border-blue-400 transition-colors group"
+                >
+                  <div className="flex flex-col items-center gap-2 text-blue-600">
+                    <FolderUp className="w-10 h-10 group-hover:scale-110 transition-transform" />
+                    <p className="text-sm font-medium">点击选择本机文件</p>
+                    <p className="text-xs text-blue-500">
+                      支持 PDF、Word、Excel、图片等格式，可多选
+                    </p>
+                  </div>
+                </button>
+
+                {files.length > 0 && (
+                  <div className="mt-4 space-y-2 max-h-56 overflow-y-auto">
+                    {files.map((f, index) => (
+                      <div
+                        key={f.name + index}
+                        className="flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-200"
                       >
-                        <input
-                          type="checkbox"
-                          checked={selectedFiles.includes(f.name)}
-                          onChange={() => handleFileSelect(f.name)}
-                          className="w-4 h-4 text-blue-600 rounded"
-                        />
-                        {getFileIcon(f.name)}
-                        <span className="flex-1 text-sm text-slate-700">{f.name}</span>
+                        <div className="w-8 h-8 bg-slate-100 rounded flex items-center justify-center text-slate-500">
+                          {getFileIcon(f.name)}
+                        </div>
+                        <span className="flex-1 text-sm text-slate-700 truncate">{f.name}</span>
                         <span className="text-xs text-slate-400">{formatSize(f.size)}</span>
-                      </label>
+                        <button
+                          onClick={() => handleRemoveFile(index)}
+                          className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
                     ))}
                   </div>
-                </div>
+                )}
               </div>
             </div>
           ) : (
             <div className="space-y-3">
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-xs text-blue-700">
+                  <strong>案号：</strong>{caseNumber} &nbsp;&nbsp;
+                  <strong>客户：</strong>{clientName} &nbsp;&nbsp;
+                  <strong>类型：</strong>{category}
+                </p>
+              </div>
               <p className="text-sm text-slate-500 mb-4">
-                为每份文件设置密级，高密级文件将自动移入安全区域
+                为每份文件设置密级，高密级文件（核心、禁止外传）将自动移入安全隔离区
               </p>
-              {files.map((f, index) => (
-                <div
-                  key={f.name}
-                  className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200"
-                >
-                  {getFileIcon(f.name)}
-                  <span className="flex-1 text-sm text-slate-700">{f.name}</span>
-                  <select
-                    value={f.securityLevel}
-                    onChange={(e) =>
-                      handleSecurityChange(index, e.target.value as SecurityLevel)
-                    }
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${getSecurityBadgeClass(
-                      f.securityLevel
-                    )} focus:outline-none`}
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {files.map((f, index) => (
+                  <div
+                    key={f.name + index}
+                    className={`flex items-center gap-3 p-3 rounded-lg border ${
+                      (f.securityLevel === 'core' || f.securityLevel === 'forbidden')
+                        ? 'bg-amber-50 border-amber-200'
+                        : 'bg-slate-50 border-slate-200'
+                    }`}
                   >
-                    <option value="normal">普通</option>
-                    <option value="internal">内部</option>
-                    <option value="core">核心</option>
-                    <option value="forbidden">禁止外传</option>
-                  </select>
-                </div>
-              ))}
+                    <div className="w-8 h-8 bg-white rounded flex items-center justify-center text-slate-500 border border-slate-200">
+                      {getFileIcon(f.name)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-slate-700 truncate">{f.name}</p>
+                      <p className="text-xs text-slate-400">{formatSize(f.size)}</p>
+                    </div>
+                    <select
+                      value={f.securityLevel}
+                      onChange={(e) =>
+                        handleSecurityChange(index, e.target.value as SecurityLevel)
+                      }
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${getSecurityBadgeClass(
+                        f.securityLevel
+                      )} focus:outline-none cursor-pointer`}
+                    >
+                      <option value="normal">普通</option>
+                      <option value="internal">内部</option>
+                      <option value="core">核心</option>
+                      <option value="forbidden">禁止外传</option>
+                    </select>
+                    {(f.securityLevel === 'core' || f.securityLevel === 'forbidden') && (
+                      <Lock className="w-4 h-4 text-amber-500" />
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
 
-        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-between">
+        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-between items-center flex-shrink-0">
           {step === 2 ? (
             <button
               onClick={() => setStep(1)}
@@ -252,18 +320,21 @@ const ImportModal = ({ onClose }: ImportModalProps) => {
               上一步
             </button>
           ) : (
+            <div className="text-xs text-slate-500">
+              已选择 <span className="font-medium text-slate-700">{files.length}</span> 份文件
+            </div>
+          )}
+          <div className="flex gap-2">
             <button
               onClick={onClose}
               className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200 rounded-lg"
             >
               取消
             </button>
-          )}
-          <div className="flex gap-2">
             {step === 1 ? (
               <button
                 onClick={handleNext}
-                disabled={selectedFiles.length === 0 || !caseNumber || !clientName}
+                disabled={files.length === 0 || !caseNumber || !clientName}
                 className="px-6 py-2 bg-blue-500 text-white text-sm font-medium rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 下一步
@@ -271,8 +342,9 @@ const ImportModal = ({ onClose }: ImportModalProps) => {
             ) : (
               <button
                 onClick={handleSubmit}
-                className="px-6 py-2 bg-blue-500 text-white text-sm font-medium rounded-lg hover:bg-blue-600"
+                className="px-6 py-2 bg-blue-500 text-white text-sm font-medium rounded-lg hover:bg-blue-600 flex items-center gap-1"
               >
+                <Plus className="w-4 h-4" />
                 确认导入
               </button>
             )}
@@ -331,6 +403,22 @@ const CaseCabinet = () => {
     })
   }
 
+  const handleUnlockRequest = (file: CaseFile) => {
+    if (file.isInHighSecurityZone) {
+      addAccessLog({
+        fileId: file.id,
+        fileName: file.name,
+        caseNumber: file.caseNumber,
+        clientName: file.clientName,
+        action: 'unlock_request',
+        operator: currentUser.name,
+        operatorRole: currentUser.role,
+        remark: '申请解锁高密级文件',
+      })
+      alert('已提交解锁申请，请等待合伙人审批')
+    }
+  }
+
   const FileCard = ({ file }: { file: CaseFile }) => (
     <div
       className={`bg-white rounded-xl border p-4 hover:shadow-md transition-all ${
@@ -341,7 +429,7 @@ const CaseCabinet = () => {
     >
       <div className="flex items-start gap-3 mb-3">
         <div
-          className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+          className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
             file.isInHighSecurityZone ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-500'
           }`}
         >
@@ -351,19 +439,24 @@ const CaseCabinet = () => {
           <h4
             className="text-sm font-medium text-slate-800 truncate cursor-pointer hover:text-blue-600"
             onClick={() => handleViewFile(file)}
+            title={file.name}
           >
             {file.name}
           </h4>
-          <p className="text-xs text-slate-500 mt-0.5">{file.caseNumber}</p>
+          <p className="text-xs text-slate-500 mt-0.5" title={file.caseNumber}>{file.caseNumber}</p>
         </div>
         {file.isInHighSecurityZone && (
-          <div className="p-1.5 bg-amber-100 rounded-lg">
+          <button
+            onClick={() => handleUnlockRequest(file)}
+            className="p-1.5 bg-amber-100 rounded-lg hover:bg-amber-200 transition-colors"
+            title="申请解锁"
+          >
             <Lock className="w-4 h-4 text-amber-600" />
-          </div>
+          </button>
         )}
       </div>
 
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
         <span
           className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${getSecurityBadgeClass(
             file.securityLevel
@@ -375,8 +468,8 @@ const CaseCabinet = () => {
         <span className="text-xs text-slate-400">{formatSize(file.size)}</span>
       </div>
 
-      <div className="text-xs text-slate-400 mb-3">
-        <p>客户：{file.clientName}</p>
+      <div className="text-xs text-slate-400 mb-3 space-y-0.5">
+        <p className="truncate" title={`客户：${file.clientName}`}>客户：{file.clientName}</p>
         <p>上传：{file.uploader} · {file.uploadTime}</p>
       </div>
 
@@ -402,7 +495,7 @@ const CaseCabinet = () => {
                     setShowSecurityMenu(null)
                   }}
                   className={`w-full px-3 py-1.5 text-left text-xs hover:bg-slate-50 flex items-center gap-2 ${
-                    file.securityLevel === level ? 'font-medium' : ''
+                    file.securityLevel === level ? 'font-medium bg-slate-50' : ''
                   }`}
                 >
                   {getSecurityIcon(level)}
@@ -453,16 +546,16 @@ const CaseCabinet = () => {
           </div>
           <button
             onClick={() => setShowImportModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-lg hover:bg-blue-600 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-lg hover:bg-blue-600 transition-colors shadow-sm"
           >
-            <Plus className="w-4 h-4" />
+            <Upload className="w-4 h-4" />
             导入文件
           </button>
         </div>
       </header>
 
       <div className="max-w-7xl mx-auto px-6 py-6">
-        <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6">
+        <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6 shadow-sm">
           <div className="flex items-center gap-4 flex-wrap">
             <div className="flex-1 min-w-[200px] relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -549,7 +642,7 @@ const CaseCabinet = () => {
                 ))}
               </div>
             ) : (
-              <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
+              <div className="bg-white rounded-xl border border-slate-200 p-12 text-center shadow-sm">
                 <File className="w-12 h-12 text-slate-300 mx-auto mb-3" />
                 <p className="text-slate-500">暂无普通文件</p>
               </div>
